@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration System - Firebase</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; text-align: center; padding: 15px; background-color: #f4f4f6; margin: 0; }
+        .container { max-width: 400px; margin: 10px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); min-height: 400px; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        button { padding: 12px; flex: 1; cursor: pointer; border-radius: 8px; border: 1px solid #ddd; font-weight: bold; background: #e5e5ea; color: #8e8e93; transition: 0.3s; }
+        button.active { background-color: #007aff; color: white; border-color: #007aff; }
+        .calendar-header { font-weight: bold; font-size: 18px; margin-bottom: 10px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 15px; }
+        .day-name { font-size: 12px; color: #8e8e93; }
+        .date-cell { padding: 10px 0; border-radius: 8px; font-size: 14px; color: #d1d1d6; border: 1px solid transparent; }
+        .date-active { color: #000; font-weight: bold; cursor: pointer; border: 1px solid #007aff; }
+        .date-selected { background-color: #007aff !important; color: white !important; }
+        .date-locked { opacity: 0.15; cursor: not-allowed; }
+        #liveCounter { font-size: 14px; color: #007aff; background: #e8f2ff; padding: 8px; border-radius: 6px; margin-bottom: 15px; display: none; font-weight: bold; }
+        input, select { width: 100%; padding: 14px; margin: 8px 0; border: 2px solid #c7c7cc; border-radius: 8px; box-sizing: border-box; font-size: 16px; outline: none; }
+        .border-red { border-color: #ff3b30 !important; }
+        .border-green { border-color: #34c759 !important; }
+        #submitBtn { width: 100%; background-color: #ffcc00; color: #000; border: none; font-weight: bold; padding: 16px; border-radius: 8px; cursor: pointer; display: none; margin-top: 10px; font-size: 17px; }
+        #resultSection { display: none; margin-top: 40px; animation: fadeIn 0.5s; }
+        .success-title { font-size: 50px; font-weight: bold; color: #007aff; margin: 0; }
+        .reg-label { font-size: 18px; color: #8e8e93; margin-top: 20px; }
+        .counter-number { font-size: 110px; font-weight: bold; color: #34c759; line-height: 1; display: block; margin: 10px 0; }
+        .success-msg { color: #34c759; font-weight: bold; font-size: 18px; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="registrationForm">
+        <div class="btn-group">
+            <button id="btnDammam" onclick="selectLocation('dammam')">Dammam</button>
+            <button id="btnKhobar" onclick="selectLocation('khobar')">Khobar</button>
+        </div>
+
+        <div id="timeSection" style="display:none;">
+            <div class="btn-group">
+                <button id="btnMorning" onclick="selectTime('morning')">Morning</button>
+                <button id="btnNight" onclick="selectTime('night')">Night</button>
+            </div>
+        </div>
+
+        <div id="calendarSection" style="display:none;">
+            <div class="calendar-header" id="monthDisplay"></div>
+            <div class="calendar-grid" id="calendarGrid"></div>
+            <div id="liveCounter">Checking occupancy...</div>
+
+            <form id="tripForm">
+                <select id="idType" onchange="updatePlaceholder()">
+                    <option value="iqama">Iqama (10 Digits)</option>
+                    <option value="prn">PRN (6-8 Digits)</option>
+                </select>
+                <input type="number" id="idNumber" placeholder="Enter 10 Digit Iqama Number" inputmode="numeric" onblur="validateOnTab(this)" oninput="validateLive()">
+                <input type="text" id="name" placeholder="Full Name" onblur="validateOnTab(this)" oninput="handleNameInput()">
+                <input type="tel" id="phone" placeholder="Phone (05xxxxxxx)" inputmode="numeric" onblur="validateOnTab(this)" oninput="validateLive()">
+                <button type="submit" id="submitBtn">Submit Registration</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="resultSection">
+        <h1 class="success-title">Success</h1>
+        <div class="reg-label">Your Registration Number:</div>
+        <span class="counter-number" id="finalCount">--</span>
+        <div class="success-msg">Register done enjoy your trip!</div>
+        <p style="color:#8e8e93; font-size:12px; margin-top:20px;">Refreshing in 5 seconds...</p>
+    </div>
+</div>
+
+<script type="module">
+    // Firebase Imports
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    // Tapai ko Firebase Config
+    const firebaseConfig = {
+        apiKey: "AIzaSyDRqie4YqusveRoSSV1uzx4R8UqyXokG1M",
+        authDomain: "shopping-trip-67312.firebaseapp.com",
+        databaseURL: "https://shopping-trip-67312-default-rtdb.firebaseio.com",
+        projectId: "shopping-trip-67312",
+        storageBucket: "shopping-trip-67312.firebasestorage.app",
+        messagingSenderId: "856528424055",
+        appId: "1:856528424055:web:a38284f5b6023637fdca72"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    window.selectLocation = selectLocation;
+    window.selectTime = selectTime;
+    window.updatePlaceholder = updatePlaceholder;
+    window.validateOnTab = validateOnTab;
+    window.validateLive = validateLive;
+    window.handleNameInput = handleNameInput;
+
+    let selectedLoc = ""; let selectedT = ""; let finalDate = "";
+    const bannedWords = ["dog", "cat", "teacher", "student", "table", "water", "driver"];
+
+    function selectLocation(loc) {
+        selectedLoc = loc;
+        document.getElementById("btnDammam").className = (loc === 'dammam') ? "active" : "";
+        document.getElementById("btnKhobar").className = (loc === 'khobar') ? "active" : "";
+        document.getElementById("timeSection").style.display = "block";
+        resetSelection(); if(selectedT) renderCalendar();
+    }
+
+    function selectTime(t) {
+        selectedT = t;
+        document.getElementById("btnMorning").className = (t === 'morning') ? "active" : "";
+        document.getElementById("btnNight").className = (t === 'night') ? "active" : "";
+        resetSelection(); renderCalendar();
+    }
+
+    function resetSelection() {
+        finalDate = "";
+        document.getElementById("liveCounter").style.display = "none";
+    }
+
+    async function getOccupancy(dateKey) {
+        const dbRef = ref(db, 'registrations/' + dateKey);
+        const snapshot = await get(dbRef);
+        return snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
+    }
+
+    function renderCalendar() {
+        const grid = document.getElementById("calendarGrid");
+        document.getElementById("calendarSection").style.display = "block";
+        const now = new Date();
+        document.getElementById("monthDisplay").innerText = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+        grid.innerHTML = "";
+        ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(d => {
+            const div = document.createElement("div"); div.className = "day-name"; div.innerText = d; grid.appendChild(div);
+        });
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement("div"));
+
+        const schedule = { 
+            dammam: { morning: ["Monday", "Saturday"], night: ["Tuesday", "Thursday"] }, 
+            khobar: { morning: ["Wednesday"], night: ["Sunday", "Friday"] } 
+        };
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateObj = new Date(now.getFullYear(), now.getMonth(), d);
+            const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+            const cell = document.createElement("div");
+            cell.className = "date-cell"; cell.innerText = d;
+
+            if (schedule[selectedLoc][selectedT].includes(dayName) && dateObj >= new Date().setHours(0,0,0,0)) {
+                cell.classList.add("date-active");
+                cell.onclick = async () => {
+                    if (cell.classList.contains("date-selected")) {
+                        cell.classList.remove("date-selected"); finalDate = "";
+                        document.querySelectorAll(".date-active").forEach(c => c.classList.remove("date-locked"));
+                        document.getElementById("liveCounter").style.display = "none";
+                    } else if (finalDate === "") {
+                        cell.classList.add("date-selected"); 
+                        finalDate = dateObj.toDateString().replace(/\s/g, '_'); // Database path friendly
+                        document.querySelectorAll(".date-active").forEach(c => { if (!c.classList.contains("date-selected")) c.classList.add("date-locked"); });
+                        
+                        const countEl = document.getElementById("liveCounter");
+                        countEl.style.display = "block"; countEl.innerText = "Checking occupancy...";
+                        
+                        const count = await getOccupancy(`${selectedLoc}_${selectedT}_${finalDate}`);
+                        countEl.innerText = `Total Registered for this trip: ${count}`;
+                    }
+                    validateLive();
+                };
+            }
+            grid.appendChild(cell);
+        }
+    }
+
+    function handleNameInput() {
+        let el = document.getElementById("name");
+        el.value = el.value.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+        validateLive();
+    }
+
+    function validateOnTab(el) {
+        const val = el.value.trim();
+        if (val === "") { el.classList.remove("border-red", "border-green"); return; }
+        let valid = (el.id === "idNumber") ? (document.getElementById("idType").value === "iqama" ? val.length === 10 : val.length >= 6 && val.length <= 8) :
+                    (el.id === "name") ? (val.length > 3 && !bannedWords.some(p => val.toLowerCase().includes(p)) && !/\d/.test(val)) :
+                    (el.id === "phone") ? /^05\d{8}$/.test(val) : false;
+        el.className = valid ? "border-green" : "border-red";
+    }
+
+    function validateLive() {
+        const idOk = (document.getElementById("idType").value === "iqama") ? document.getElementById("idNumber").value.length === 10 : (document.getElementById("idNumber").value.length >= 6 && document.getElementById("idNumber").value.length <= 8);
+        const formOk = finalDate && idOk && document.getElementById("name").value.length > 3 && /^05\d{8}$/.test(document.getElementById("phone").value);
+        document.getElementById("submitBtn").style.display = formOk ? "block" : "none";
+    }
+
+    function updatePlaceholder() {
+        const type = document.getElementById("idType").value;
+        document.getElementById("idNumber").placeholder = (type === "prn") ? "Enter 6-8 Digit PRN Number" : "Enter 10 Digit Iqama Number";
+        validateLive();
+    }
+
+    document.getElementById("tripForm").addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById("submitBtn");
+        btn.innerText = "Processing..."; btn.disabled = true;
+
+        const dateKey = `${selectedLoc}_${selectedT}_${finalDate}`;
+        const newRegRef = push(ref(db, 'registrations/' + dateKey));
+        
+        const formData = {
+            id_type: document.getElementById("idType").value.toUpperCase(),
+            id_number: document.getElementById("idNumber").value,
+            name: document.getElementById("name").value,
+            phone: document.getElementById("phone").value,
+            timestamp: new Date().toISOString()
+        };
+
+        try {
+            await set(newRegRef, formData);
+            const finalCount = await getOccupancy(dateKey);
+            
+            document.getElementById("registrationForm").style.display = "none";
+            document.getElementById("resultSection").style.display = "block";
+            document.getElementById("finalCount").innerText = finalCount;
+            
+            setTimeout(() => location.reload(), 5000);
+        } catch (error) {
+            alert("Error: " + error.message);
+            btn.innerText = "Submit Registration"; btn.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>
+
+
